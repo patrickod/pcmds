@@ -16,23 +16,23 @@ import (
 const COTL_CUSHION_URL = "https://merch.devolverdigital.com/products/cult-of-the-lamb-pillow"
 
 type CultOfTheLambPillowMetrics struct {
-	last_check prometheus.Gauge
-	in_stock   prometheus.Gauge
+	cotl_pillow_last_check prometheus.Gauge
+	cotl_pillow_in_stock   prometheus.Gauge
 }
 
 func NewMetrics(reg prometheus.Registerer) *CultOfTheLambPillowMetrics {
 	m := &CultOfTheLambPillowMetrics{
-		in_stock: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "in_stock",
+		cotl_pillow_in_stock: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cotl_pillow_in_stock",
 			Help: "Whether the Cult of the Lamb Pillow is in stock",
 		}),
-		last_check: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "last_check",
+		cotl_pillow_last_check: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cotl_pillow_last_check",
 			Help: "The last time the Cult of the Lamb Pillow was checked for stock",
 		}),
 	}
-	reg.MustRegister(m.in_stock)
-	reg.MustRegister(m.last_check)
+	reg.MustRegister(m.cotl_pillow_in_stock)
+	reg.MustRegister(m.cotl_pillow_last_check)
 
 	return m
 }
@@ -48,9 +48,9 @@ func main() {
 		// non-empty disabled attribute on submit indicates out of stock
 		if len(disabled) > 0 {
 			log.Printf("Cult of the Lamb Pillow out of stock")
-			metrics.in_stock.Set(0)
+			metrics.cotl_pillow_in_stock.Set(0)
 		} else {
-			metrics.in_stock.Set(1)
+			metrics.cotl_pillow_in_stock.Set(1)
 			log.Printf("Cult of the Lamb Pillow IS IN STOCK")
 		}
 	})
@@ -59,7 +59,7 @@ func main() {
 	check := func() {
 		log.Printf("Visiting %s", COTL_CUSHION_URL)
 		c.Visit(COTL_CUSHION_URL)
-		metrics.last_check.SetToCurrentTime()
+		metrics.cotl_pillow_last_check.SetToCurrentTime()
 	}
 	// set initial state
 	check()
