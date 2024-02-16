@@ -22,10 +22,6 @@ type CultOfTheLambPillowMetrics struct {
 	cotl_pillow_in_stock   prometheus.Gauge
 }
 
-// var (
-// 	cotl_pillow_last_check = metrics.
-// )
-
 func NewMetrics(reg prometheus.Registerer) *CultOfTheLambPillowMetrics {
 	m := &CultOfTheLambPillowMetrics{
 		cotl_pillow_in_stock: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -49,6 +45,7 @@ func main() {
 	ticker := time.NewTicker(60 * time.Second)
 
 	var runAsTsNet = flag.Bool("tsnet", false, "run as a tsnet service")
+	flag.Parse()
 
 	c := colly.NewCollector()
 	c.OnHTML("#product-form .product-submit", func(e *colly.HTMLElement) {
