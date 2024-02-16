@@ -1,16 +1,18 @@
 package main
 
 import (
+	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/gocolly/colly/v2"
 	"tailscale.com/tsnet"
+	"tailscale.com/tsweb"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const COTL_CUSHION_URL = "https://merch.devolverdigital.com/products/cult-of-the-lamb-pillow"
@@ -19,6 +21,10 @@ type CultOfTheLambPillowMetrics struct {
 	cotl_pillow_last_check prometheus.Gauge
 	cotl_pillow_in_stock   prometheus.Gauge
 }
+
+// var (
+// 	cotl_pillow_last_check = metrics.
+// )
 
 func NewMetrics(reg prometheus.Registerer) *CultOfTheLambPillowMetrics {
 	m := &CultOfTheLambPillowMetrics{
@@ -38,9 +44,11 @@ func NewMetrics(reg prometheus.Registerer) *CultOfTheLambPillowMetrics {
 }
 
 func main() {
-	registry := prometheus.NewRegistry()
-	metrics := NewMetrics(registry)
+	// registry := prometheus.NewRegistry()
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
 	ticker := time.NewTicker(60 * time.Second)
+
+	var runAsTsNet = flag.Bool("tsnet", false, "run as a tsnet service")
 
 	c := colly.NewCollector()
 	c.OnHTML("#product-form .product-submit", func(e *colly.HTMLElement) {
@@ -71,16 +79,30 @@ func main() {
 		}
 	}()
 
-	srv := tsnet.Server{
-		Hostname: "cotl-probe",
-		AuthKey:  os.Getenv("TS_AUTHKEY"),
-		Logf:     log.Printf,
-	}
-	http80, err := srv.Listen("tcp", ":80")
-	if err != nil {
-		log.Fatal(err)
+	var ln net.Listener
+	var err error
+
+	if *runAsTsNet {
+		srv := tsnet.Server{
+			Hostname: "cotl-probe",
+			AuthKey:  os.Getenv("TS_AUTHKEY"),
+			Logf:     log.Printf,
+		}
+		ln, err = srv.Listen("tcp", ":80")
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+	} else {
+		ln, err = net.Listen("tcp", ":4321")
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
 	}
 
-	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{Registry: registry}))
-	log.Fatal(http.Serve(http80, nil))
+	mux := http.NewServeMux()
+	tsweb.Debugger(mux)
+	// mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{Registry: registry}))
+	log.Fatal(http.Serve(ln, mux))
 }
