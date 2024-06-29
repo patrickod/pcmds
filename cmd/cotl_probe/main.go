@@ -63,8 +63,11 @@ func main() {
 	// check action
 	check := func() {
 		log.Printf("Visiting %s", COTL_CUSHION_URL)
-		c.Visit(COTL_CUSHION_URL)
-		metrics.cotl_pillow_last_check.SetToCurrentTime()
+		if err := c.Visit(COTL_CUSHION_URL); err != nil {
+			log.Printf("error scraping COTL pillow stock: %s", err)
+		} else {
+			metrics.cotl_pillow_last_check.SetToCurrentTime()
+		}
 	}
 	// set initial state
 	check()
@@ -91,11 +94,12 @@ func main() {
 			return
 		}
 	} else {
-		ln, err = net.Listen("tcp", ":4321")
+		ln, err = net.Listen("tcp", ":")
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
+		log.Printf("listening on %s", ln.Addr().String())
 	}
 
 	mux := http.NewServeMux()
