@@ -1,9 +1,9 @@
-module github.com/patrickod/tsnet-connect
+module github.com/patrickod/pcmds
 
 go 1.22.4
 
 require (
-	github.com/gocolly/colly/v2 v2.1.0
+	github.com/gocolly/colly v1.2.0
 	github.com/prometheus/client_golang v1.18.0
 	tailscale.com v1.68.1
 )
