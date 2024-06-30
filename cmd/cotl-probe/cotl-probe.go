@@ -104,6 +104,5 @@ func main() {
 
 	mux := http.NewServeMux()
 	tsweb.Debugger(mux)
-	// mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{Registry: registry}))
 	log.Fatal(http.Serve(ln, mux))
 }
