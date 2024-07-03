@@ -98,7 +98,7 @@ type StationStatusResponse struct {
 	} `json:"data"`
 }
 
-func (m *PODMetrics) Reset() {
+func (m *PODMetrics) ResetBaywheels() {
 	m.baywheels_station_capacity.Reset()
 	m.baywheels_bike_reserved.Reset()
 	m.baywheels_bike_disabled.Reset()
@@ -219,19 +219,19 @@ func NewMetrics(reg prometheus.Registerer) *PODMetrics {
 func sampleStationInformation(metrics *PODMetrics) {
 	stationInformation, err := http.Get(fmt.Sprintf("%s/station_information.json", BaywheelsURL))
 	if err != nil {
-		fmt.Printf("Error sampling station information %s\n", err)
+		log.Printf("Error sampling station information %s", err)
 		return
 	}
 	body, err := io.ReadAll(stationInformation.Body)
 	defer stationInformation.Body.Close()
 	if err != nil {
-		fmt.Printf("Error sampling station information %s\n", err)
+		log.Printf("Error sampling station information %s", err)
 		return
 	}
 
 	var response BaywheelsStationInformationResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		fmt.Printf("Error sampling station information %s\n", err)
+		log.Printf("Error sampling station information %s", err)
 		return
 	} else {
 		for _, station := range response.Data.Stations {
@@ -243,20 +243,20 @@ func sampleStationInformation(metrics *PODMetrics) {
 func sampleBikeInformation(metrics *PODMetrics) {
 	bikeInformation, err := http.Get(fmt.Sprintf("%s/free_bike_status.json", BaywheelsURL))
 	if err != nil {
-		fmt.Printf("Error sampling bike status %s\n", err)
+		log.Printf("Error sampling bike status: %v", err)
 		return
 	}
 
 	body, err := io.ReadAll(bikeInformation.Body)
 	defer bikeInformation.Body.Close()
 	if err != nil {
-		fmt.Printf("Error sampling bike status %s\n", err)
+		log.Printf("Error sampling bike status: %v", err)
 		return
 	}
 
 	var response BaywheelsBikeStatusResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		fmt.Printf("Error sampling bike status %s\n", err)
+		log.Printf("Error sampling bike status: %v", err)
 		return
 	} else {
 		for _, bike := range response.Data.Bikes {
@@ -269,20 +269,20 @@ func sampleBikeInformation(metrics *PODMetrics) {
 func sampleStationStatus(metrics *PODMetrics) {
 	stationStatus, err := http.Get(fmt.Sprintf("%s/station_status.json", BaywheelsURL))
 	if err != nil {
-		fmt.Printf("Error sampling station status %s\n", err)
+		log.Printf("Error sampling station status: vs", err)
 		return
 	}
 
 	body, err := io.ReadAll(stationStatus.Body)
 	defer stationStatus.Body.Close()
 	if err != nil {
-		fmt.Printf("Error sampling station status %s\n", err)
+		log.Printf("Error sampling station status: %v", err)
 		return
 	}
 
 	var response StationStatusResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		fmt.Printf("Error sampling station status %s\n", err)
+		log.Printf("Error sampling station status: %v", err)
 		return
 	}
 
@@ -307,18 +307,13 @@ func sampleStationStatus(metrics *PODMetrics) {
 }
 
 func sampleBaywheelsMetrics(metrics *PODMetrics) {
-	metrics.Reset()
+	metrics.ResetBaywheels()
 	sampleStationInformation(metrics)
 	sampleStationStatus(metrics)
 	sampleBikeInformation(metrics)
 }
 
-type cotlProbe struct {
-	c       *colly.Collector
-	metrics *PODMetrics
-}
-
-func newProbe(metrics *PODMetrics) cotlProbe {
+func sampleCOTLMetrics(metrics *PODMetrics) {
 	c := colly.NewCollector()
 	c.OnHTML("#product-form .product-submit", func(e *colly.HTMLElement) {
 		disabled := e.ChildAttr("input", "disabled")
@@ -331,15 +326,11 @@ func newProbe(metrics *PODMetrics) cotlProbe {
 			log.Printf("Cult of the Lamb Pillow IS IN STOCK")
 		}
 	})
-	return cotlProbe{c: c, metrics: metrics}
-}
-
-func (p *cotlProbe) check() {
 	log.Printf("Visiting %s", COTLCushionURL)
-	if err := p.c.Visit(COTLCushionURL); err != nil {
-		log.Printf("error scraping COTL pillow stock: %s", err)
+	if err := c.Visit(COTLCushionURL); err != nil {
+		log.Printf("error scraping COTL pillow stock: %v", err)
 	} else {
-		p.metrics.cotl_pillow_last_check.SetToCurrentTime()
+		metrics.cotl_pillow_last_check.SetToCurrentTime()
 	}
 }
 
@@ -347,20 +338,18 @@ func main() {
 	flag.Parse()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
 
-	probe := newProbe(metrics)
-
 	baywheelsTicker := time.NewTicker(60 * time.Second)
 	cotlTicker := time.NewTicker(60 * time.Second * 5)
 
 	// sample at startup
-	probe.check()
+	sampleCOTLMetrics(metrics)
 	sampleBaywheelsMetrics(metrics)
 
 	go func() {
 		for {
 			select {
 			case <-cotlTicker.C:
-				probe.check()
+				sampleCOTLMetrics(metrics)
 			case <-baywheelsTicker.C:
 				sampleBaywheelsMetrics(metrics)
 			}
@@ -379,6 +368,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		log.Printf("listening on %s:80", srv.Hostname)
 	} else {
 		ln, err = net.Listen("tcp", fmt.Sprintf(":%d", ListenPort))
 		if err != nil {
