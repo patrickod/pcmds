@@ -24,6 +24,13 @@ func main() {
 			io.WriteString(w, "Hello, HTTP!\n")
 		}
 	})
+	mux.HandleFunc("/", func(writer http.ResponseWriter, req *http.Request) {
+		if req.URL.Scheme == "https" {
+			io.WriteString(writer, "Hello, HTTPS!\n")
+		} else {
+			io.WriteString(writer, "Hello, HTTP!\n")
+		}
+	})
 
 	if err := http.Serve(ln, mux); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)

@@ -58,7 +58,8 @@ func analyzeFile(filename string) {
 			return true
 		}
 
-		if !isHTTPHandlerFunc(fn.Params.List) {
+		isHandler, requestVarName := isHTTPHandlerFunc(fn.Params.List)
+		if !isHandler {
 			return true
 		}
 
@@ -102,28 +103,31 @@ func analyzeFile(filename string) {
 	})
 }
 
-func isHTTPHandlerFunc(params []*ast.Field) bool {
+// isHTTPHandlerFunc checks if the function is an HTTP handler function.
+// It returns true if the function has the following signature:
+// func(http.ResponseWriter, *http.Request)
+// The second argument is the name of the *http.Request parameter.
+func isHTTPHandlerFunc(params []*ast.Field) (bool, string) {
 	if len(params) != 2 {
-		return false
+		return false, ""
 	}
 
 	if len(params[0].Names) != 1 || len(params[1].Names) != 1 {
-		return false
+		return false, ""
 	}
 
 	if params[0].Names[0].Name != "w" || params[1].Names[0].Name != "r" {
-		return false
+		return false, ""
 	}
 
 	if !isType(params[0].Type, "http.ResponseWriter") {
-		return false
+		return false, ""
 	}
 
 	if !isType(params[1].Type, "*http.Request") {
-		return false
+		return false, ""
 	}
-
-	return true
+	return true, params[1].Names[0].Name
 }
 
 func isType(expr ast.Expr, typeName string) bool {
