@@ -54,16 +54,16 @@ func analyzeFile(filename string) {
 			return true
 		}
 
-		if fn.Results != nil || len(fn.Params.List) != 2 {
-			return true
-		}
-
+		// Check if the function is an HTTP handler
+		// as determined by having both http.ResponseWriter and *http.Request parameters
+		// capture the name of the *http.Request parameter
 		isHandler, requestVarName := isHTTPHandlerFunc(fn.Params.List)
 		if !isHandler {
 			return true
 		}
 
 		ast.Inspect(body, func(n ast.Node) bool {
+			// Check if the node is a binary expression
 			binExpr, ok := n.(*ast.BinaryExpr)
 			if !ok {
 				return true
@@ -81,17 +81,20 @@ func analyzeFile(filename string) {
 			}
 
 			if sel, ok := selector.X.(*ast.SelectorExpr); ok {
-				if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == "r" && sel.Sel.Name == "URL" && selector.Sel.Name == "Scheme" {
-					// Check if the right side of the equality is the string literal "https"
-					lit, ok := binExpr.Y.(*ast.BasicLit)
-					if !ok {
-						return true
-					}
-					if lit.Kind != token.STRING {
-						return true
-					}
-					if lit.Value == `"https"` {
-						log.Printf("Found r.URL.Scheme == \"https\"  comparison in HTTP handler at %s\n", fset.Position(selector.Pos()))
+				if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == requestVarName {
+					if sel.Sel.Name == "URL" && selector.Sel.Name == "Scheme" {
+						// Check if the right side of the equality is the string literal "https"
+						lit, ok := binExpr.Y.(*ast.BasicLit)
+						if !ok {
+							return true
+						}
+						if lit.Kind != token.STRING {
+							return true
+						}
+						if lit.Value == `"https"` {
+							log.Printf("Found %s.URL.Scheme == \"https\"  comparison in HTTP handler at %s\n", requestVarName, fset.Position(selector.Pos()))
+							return true
+						}
 					}
 				}
 			}
@@ -99,35 +102,38 @@ func analyzeFile(filename string) {
 			return true
 		})
 
-		return true
+		return false
 	})
 }
 
 // isHTTPHandlerFunc checks if the function is an HTTP handler function.
-// It returns true if the function has the following signature:
-// func(http.ResponseWriter, *http.Request)
-// The second argument is the name of the *http.Request parameter.
+// It returns true if the function has both http.ResponseWriter and
+// *http.Request parameters.
+// The second return value is the name of the *http.Request parameter.
 func isHTTPHandlerFunc(params []*ast.Field) (bool, string) {
-	if len(params) != 2 {
+	if len(params) < 2 {
 		return false, ""
 	}
 
-	if len(params[0].Names) != 1 || len(params[1].Names) != 1 {
-		return false, ""
+	var hasResponseWriter, hasRequest bool
+	var requestVarName string
+	for _, p := range params {
+		if len(p.Names) != 1 {
+			return false, ""
+		}
+		if isType(p.Type, "http.ResponseWriter") {
+			hasResponseWriter = true
+		}
+		if isType(p.Type, "*http.Request") {
+			hasRequest = true
+			requestVarName = p.Names[0].Name
+		}
 	}
 
-	if params[0].Names[0].Name != "w" || params[1].Names[0].Name != "r" {
-		return false, ""
+	if hasResponseWriter && hasRequest {
+		return true, requestVarName
 	}
-
-	if !isType(params[0].Type, "http.ResponseWriter") {
-		return false, ""
-	}
-
-	if !isType(params[1].Type, "*http.Request") {
-		return false, ""
-	}
-	return true, params[1].Names[0].Name
+	return false, ""
 }
 
 func isType(expr ast.Expr, typeName string) bool {
