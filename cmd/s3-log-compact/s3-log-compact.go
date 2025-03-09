@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -87,22 +87,13 @@ func (a *aggregator) uploadBuffer(ctx context.Context) error {
 	a.fileCounter++
 	key := fmt.Sprintf("%saggregated_%03d.gz", a.destPrefix, a.fileCounter)
 
-	var compressedBuffer bytes.Buffer
-	gzWriter := gzip.NewWriter(&compressedBuffer)
-	if _, err := a.currentBuffer.WriteTo(gzWriter); err != nil {
-		return fmt.Errorf("error compressing buffer: %w", err)
-	}
-	if err := gzWriter.Close(); err != nil {
-		return fmt.Errorf("error closing gzip writer: %w", err)
-	}
-
 	if dryRun {
-		log.Printf("Dry run: would upload %s to %s/%s", humanizeBytes(compressedBuffer.Len()), a.destBucket, key)
+		log.Printf("Dry run: would upload %s to %s/%s", humanizeBytes(a.currentBuffer.Len()), a.destBucket, key)
 	} else {
 		_, err := a.client.PutObject(ctx, &s3.PutObjectInput{
 			Bucket: &a.destBucket,
 			Key:    &key,
-			Body:   bytes.NewReader(compressedBuffer.Bytes()),
+			Body:   bytes.NewReader(a.currentBuffer.Bytes()),
 		})
 		if err != nil {
 			return fmt.Errorf("error uploading to S3: %w", err)
@@ -118,22 +109,13 @@ func (a *aggregator) writeContent(ctx context.Context, content []byte) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	var compressedContent bytes.Buffer
-	gzWriter := gzip.NewWriter(&compressedContent)
-	if _, err := gzWriter.Write(content); err != nil {
-		return fmt.Errorf("error compressing content: %w", err)
-	}
-	if err := gzWriter.Close(); err != nil {
-		return fmt.Errorf("error closing gzip writer: %w", err)
-	}
-
-	if a.currentSize+int64(compressedContent.Len()) >= maxOutputSize {
+	if a.currentSize+int64(len(content)) >= maxOutputSize {
 		if err := a.uploadBuffer(ctx); err != nil {
 			return err
 		}
 	}
 
-	n, err := a.currentBuffer.Write(compressedContent.Bytes())
+	n, err := a.currentBuffer.Write(content)
 	if err != nil {
 		return fmt.Errorf("error writing to buffer: %w", err)
 	}
@@ -151,13 +133,7 @@ func (a *aggregator) processObject(ctx context.Context, key string) error {
 	}
 	defer output.Body.Close()
 
-	gzReader, err := gzip.NewReader(output.Body)
-	if err != nil {
-		return fmt.Errorf("error creating gzip reader for %s: %w", key, err)
-	}
-	defer gzReader.Close()
-
-	content, err := io.ReadAll(gzReader)
+	content, err := io.ReadAll(output.Body)
 	if err != nil {
 		return fmt.Errorf("error reading content from %s: %w", key, err)
 	}
@@ -245,21 +221,25 @@ type LambdaInput struct {
 }
 
 func handleRequest(ctx context.Context, event LambdaInput) error {
-	if event.Date == "" {
-		return fmt.Errorf("Date is required")
+	return processLogs(ctx, event.Date, event.Bucket, event.DryRun)
+}
+
+func processLogs(ctx context.Context, date, bucket string, dryRunFlag bool) error {
+	if date == "" {
+		return fmt.Errorf("date is required")
 	}
-	if event.Bucket == "" {
-		return fmt.Errorf("Bucket is required")
+	if bucket == "" {
+		return fmt.Errorf("bucket is required")
 	}
 
-	dryRun = event.DryRun
+	dryRun = dryRunFlag
 
-	sourceBucket, sourcePrefix, err := parseS3URI(fmt.Sprintf("s3://%s/", event.Bucket))
+	sourceBucket, sourcePrefix, err := parseS3URI(fmt.Sprintf("s3://%s/", bucket))
 	if err != nil {
 		return err
 	}
 
-	destBucket, destPrefix, err := parseS3URI(fmt.Sprintf("s3://%s/", event.Bucket))
+	destBucket, destPrefix, err := parseS3URI(fmt.Sprintf("s3://%s/", bucket))
 	if err != nil {
 		return err
 	}
@@ -290,9 +270,9 @@ func handleRequest(ctx context.Context, event LambdaInput) error {
 			agg.fileCounter = 0
 
 			// Process logs for the given date
-			datePrefix := fmt.Sprintf("%s%s/", appPrefix, event.Date)
+			datePrefix := fmt.Sprintf("%s%s/", appPrefix, date)
 			agg.sourcePrefix = datePrefix
-			agg.destPrefix = fmt.Sprintf("%s%s/%s/", destPrefix, app, event.Date) // Fix the broken path appending
+			agg.destPrefix = fmt.Sprintf("%s%s/%s/", destPrefix, app, date) // Fix the broken path appending
 
 			if err := agg.run(ctx); err != nil {
 				return err
@@ -304,5 +284,21 @@ func handleRequest(ctx context.Context, event LambdaInput) error {
 }
 
 func main() {
-	lambda.Start(handleRequest)
+	runAsCLI := flag.Bool("cli", false, "Run as CLI utility")
+	date := flag.String("date", "", "Date to process logs for (required for CLI)")
+	bucket := flag.String("bucket", "", "S3 bucket to process logs from (required for CLI)")
+	dryRunFlag := flag.Bool("dry-run", true, "Perform a dry run (CLI only)")
+	flag.Parse()
+
+	if *runAsCLI {
+		if *date == "" || *bucket == "" {
+			log.Fatal("Date and bucket are required for CLI mode")
+		}
+
+		if err := processLogs(context.Background(), *date, *bucket, *dryRunFlag); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		lambda.Start(handleRequest)
+	}
 }
