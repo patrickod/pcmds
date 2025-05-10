@@ -1,0 +1,6 @@
+---
+all:
+  hosts:
+    abracadaniel:
+      ansible_host: abracadaniel.bear-justice.ts.net # Replace with actual IP address
+      ansible_user: root

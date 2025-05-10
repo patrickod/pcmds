@@ -1,0 +1,19 @@
+[Unit]
+Description=Jetstream Service
+After=network.target
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+ExecStart=/home/relay/jetstream/jetstream
+EnvironmentFile=/home/relay/jetstream/.env
+WorkingDirectory=/home/relay/jetstream
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jetstream
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Indigo Relay Service
+After=network.target
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+ExecStart=/home/relay/indigo/relay serve
+EnvironmentFile=/home/relay/indigo/.env
+WorkingDirectory=/home/relay/indigo
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=indigo-relay
+
+[Install]
+WantedBy=multi-user.target

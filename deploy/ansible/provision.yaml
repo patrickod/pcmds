@@ -1,0 +1,159 @@
+---
+- name: Provision abradacandiel host
+  hosts: abracadaniel
+  become: true
+  vars:
+    hostname: abradacandiel
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+    - name: restart caddy
+      systemd:
+        name: caddy
+        state: restarted
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - build-essential
+          - caddy
+          - curl
+          - dstat
+          - fail2ban
+          - fd-find
+          - git
+          - golang
+          - htop
+          - httpie
+          - iftop
+          - iotop
+          - pg-activity
+          - postgresql
+          - prometheus-node-exporter
+          - prometheus-node-exporter-collectors
+          - prometheus-postgres-exporter
+          - ripgrep
+          - tmux
+          - ufw
+          - unattended-upgrades
+          - vim
+          - yarnpkg
+        state: present
+
+    - name: Set hostname
+      hostname:
+        name: "{{ hostname }}"
+
+    - name: Configure hostname in /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "127.0.1.1 {{ hostname }}"
+        regexp: "^127.0.1.1"
+        state: present
+
+    - name: Configure unattended upgrades
+      ansible.builtin.copy:
+        src: files/etc/apt/apt.conf.d/20auto-upgrades
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Configure firewall - default inbound policy
+      ufw:
+        default: deny
+        direction: incoming
+
+    - name: allow all tailscale
+      ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+
+    - name: Configure firewall - default outbound policy
+      ufw:
+        default: allow
+        direction: outgoing
+
+    - name: Configure firewall - allow HTTP
+      ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+
+    - name: Configure firewall - allow HTTPS
+      ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+
+    - name: Enable firewall
+      ufw:
+        state: enabled
+        policy: deny
+
+    - name: Create relay system user
+      user:
+        name: relay
+        create_home: yes
+        shell: /bin/bash
+        state: present
+
+    - name: Create application directories
+      ansible.builtin.file:
+        path: "/data/relay/persist"
+        owner: relay
+        group: relay
+        state: directory
+        mode: "0755"
+
+    - name: create caddyfile
+      ansible.builtin.copy:
+        src: files/etc/caddy/Caddyfile
+        dest: /etc/caddy/Caddyfile
+        owner: root
+        group: root
+        mode: "0644"
+        # validate: "/usr/bin/caddy validate --config %s"
+      notify:
+        - restart caddy
+
+    - name: Create systemd service for relay
+      ansible.builtin.copy:
+        src: etc/systemd/system/indigo-relay.service
+        dest: /etc/systemd/system/indigo-relay.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+
+    - name: Enable and start indigo-relay service
+      systemd:
+        name: indigo-relay
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Create systemd service for jetstream
+      ansible.builtin.copy:
+        src: files/etc/systemd/system/jetstream.service
+        dest: /etc/systemd/system/jetstream.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+
+    - name: Enable and start jetstream service
+      systemd:
+        name: jetstream
+        state: started
+        enabled: yes
+        daemon_reload: yes
