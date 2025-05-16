@@ -13,6 +13,17 @@
         name: caddy
         state: restarted
   tasks:
+    - name: create patrickod user
+      ansible.builtin.user:
+        name: patrickod
+        create_home: yes
+        shell: /bin/bash
+        state: present
+        groups:
+          - sudo
+          - adm
+          - systemd-journal
+
     - name: Update apt cache
       apt:
         update_cache: yes

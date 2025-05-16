@@ -1,1 +1,1 @@
-JETSTREAM_WS_URL=wss://playground.sophie.cafe/xrpc/com.atproto.sync.subscribeRepos
+JETSTREAM_WS_URL=ws://localhost:2470/xrpc/com.atproto.sync.subscribeRepos
