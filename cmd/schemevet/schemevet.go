@@ -1,3 +1,5 @@
+// schemevet is go AST analysis tool that identifies instances of unsafe
+// comparison of unpopulated URL.Scheme field in HTTP request handlers.
 package main
 
 import (

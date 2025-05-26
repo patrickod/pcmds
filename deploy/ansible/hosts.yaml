@@ -1,0 +1,8 @@
+k3s:
+  hosts:
+    abracadaniel:
+      ansible_user: root
+      cluster_cidr_v4: 10.42.0.0/16
+      cluster_cidr_v6: 2a01:4f8:231:5cc::/112
+      service_cidr_v4: 10.4.30.0/16
+      service_cidr_v6: 2a01:4f8:231:5cc::1:0/112
