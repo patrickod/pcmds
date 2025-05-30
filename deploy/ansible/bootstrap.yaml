@@ -1,0 +1,43 @@
+---
+- name: bootstrap
+  hosts: all
+  tasks:
+    - name: add patrickod
+      ansible.builtin.user:
+        name: patrickod
+        groups: sudo
+        append: yes
+        shell: /bin/bash
+        state: present
+
+    - name: Upgrade all apt packages
+      apt:
+        force_apt_get: yes
+        upgrade: dist
+
+    - name: test k3s variables
+      debug:
+        msg: "cluster_cidr_v4={{ cluster_cidr_v4 }} service_cidr_v4={{ service_cidr_v4 }} cluster_cidr_v6={{ cluster_cidr_v6 }} service_cidr_v6={{ service_cidr_v6 }}"
+      when: inventory_hostname in groups['k3s']
+
+    - name: Check if k3s service exists
+      ansible.builtin.shell: |
+        systemctl list-units --full -all | grep -Fq 'k3s.service'
+      register: k3s_service_exists
+      ignore_errors: true
+      changed_when: false
+
+    - name: install k3s
+      shell:
+        cmd: |
+          curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--cluster-cidr={{ cluster_cidr_v4 }},{{ cluster_cidr_v6 }} --service-cidr={{ service_cidr_v4 }},{{ service_cidr_v6 }}
+            --kube-controller-manager-arg node-cidr-mask-size-ipv4=16 --kube-controller-manager-arg node-cidr-mask-size-ipv6=112" sh -
+      when: inventory_hostname in groups['k3s'] and k3s_service_exists.rc != 0
+
+    - name: install node exporter packages
+      apt:
+        name:
+          - prometheus-node-exporter
+          - prometheus-node-exporter-collectors
+        state: latest
+
