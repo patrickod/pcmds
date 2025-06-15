@@ -3,7 +3,7 @@
   hosts: abracadaniel
   become: true
   vars:
-    hostname: abradacandiel
+    hostname: abracadaniel
   handlers:
     - name: Reload systemd
       systemd:
@@ -168,3 +168,10 @@
         state: started
         enabled: yes
         daemon_reload: yes
+
+    - name: Create bayamo system user
+      user:
+        name: bayamo
+        create_home: yes
+        shell: /bin/bash
+        state: present
